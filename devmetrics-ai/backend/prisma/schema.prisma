@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model Organization {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  plan          Plan     @default(FREE)
+  stripeCustomerId String? @unique
+  stripeSubscriptionId String? @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  members       Member[]
+  projects      Project[]
+  metrics       Metric[]
+  aiReports     AiReport[]
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String
+  avatarUrl     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastLoginAt   DateTime?
+
+  members       Member[]
+  refreshTokens RefreshToken[]
+}
+
+model Member {
+  id             String       @id @default(cuid())
+  role           Role         @default(MEMBER)
+  joinedAt       DateTime     @default(now())
+
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
+model Project {
+  id             String       @id @default(cuid())
+  name           String
+  repoUrl        String?
+  description    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  metrics        Metric[]
+}
+
+model Metric {
+  id             String       @id @default(cuid())
+  date           DateTime
+  commits        Int          @default(0)
+  pullRequests   Int          @default(0)
+  mergedPRs      Int          @default(0)
+  issuesClosed   Int          @default(0)
+  linesAdded     Int          @default(0)
+  linesRemoved   Int          @default(0)
+  reviewsGiven   Int          @default(0)
+  deployments    Int          @default(0)
+  authorName     String?
+  authorEmail    String?
+  createdAt      DateTime     @default(now())
+
+  projectId      String
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, date])
+  @@index([projectId, date])
+}
+
+model AiReport {
+  id             String       @id @default(cuid())
+  title          String
+  content        String       @db.Text
+  periodStart    DateTime
+  periodEnd      DateTime
+  generatedAt    DateTime     @default(now())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
