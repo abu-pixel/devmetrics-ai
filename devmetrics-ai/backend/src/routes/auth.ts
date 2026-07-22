@@ -4,20 +4,20 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../lib/jwt';
 import { authRateLimiter } from '../middleware/rateLimiter';
-import { v4 as uuidv4 } from 'uuid';
+import { deleteCache } from '../lib/redis';
 
 export const authRouter = Router();
 
 const registerSchema = z.object({
   name: z.string().min(2).max(100),
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z.string().min(8).max(128),
   orgName: z.string().min(2).max(100),
 });
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string(),
+  password: z.string().min(1),
 });
 
 // POST /api/auth/register
@@ -50,7 +50,11 @@ authRouter.post('/register', authRateLimiter, async (req, res, next) => {
       },
     });
 
-    const org = user.members[0].organization;
+    const org = user.members[0]?.organization;
+    if (!org) {
+      throw new Error('Organization creation failed');
+    }
+
     const accessToken = signAccessToken({ userId: user.id, email: user.email, orgId: org.id });
     const refreshToken = signRefreshToken({ userId: user.id, email: user.email, orgId: org.id });
 
@@ -138,8 +142,9 @@ authRouter.post('/logout', async (req, res, next) => {
     const { refreshToken } = req.body;
     if (refreshToken) {
       await prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
+      await deleteCache(`auth:tokens:${refreshToken}`);
     }
-    res.json({ message: 'Logged out' });
+    res.json({ message: 'Logged out successfully' });
   } catch (err) {
     next(err);
   }
